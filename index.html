@@ -57,7 +57,10 @@
     <h2>🗓️ Historie zálivky (7 dní)</h2>
     <table id="wateringHistory" class="forecast-table"></table>
   </div>
-
+<div class="box">
+  <h2>🌧️ Srážky za posledních 7 dní</h2>
+  <table id="rainHistory" class="forecast-table"></table>
+</div>
   <div class="box" id="weatherBox">
     <p class="recommendation" id="recommendation">Načítám...</p>
     <div id="forecastDaily"></div>
@@ -145,7 +148,20 @@
         }
         hourlyHtml += "</table>";
         document.getElementById("forecastHourly").innerHTML = hourlyHtml;
-
+const rainHistoryEl = document.getElementById("rainHistory");
+let rainHtml = "<tr><th>Den</th><th>Srážky (mm)</th></tr>";
+for (let i = 0; i < 7; i++) {
+  const d = new Date(today);
+  d.setDate(today.getDate() - i);
+  const dateStr = d.toISOString().split("T")[0];
+  const idx = data.daily.time.indexOf(dateStr);
+  if (idx !== -1) {
+    rainHtml += `<tr><td>${dateStr}</td><td>${data.daily.precipitation_sum[idx]}</td></tr>`;
+  } else {
+    rainHtml += `<tr><td>${dateStr}</td><td>–</td></tr>`;
+  }
+}
+rainHistoryEl.innerHTML = rainHtml;
         const rainToday = data.daily.precipitation_sum[0];
         const wateredToday = localStorage.getItem("watered_" + startDate) === "true";
         const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
