@@ -3,74 +3,165 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Historie srážek – Zahrádka komunita</title>
+  <title>Zahrádka komunita – Chytré zalévání</title>
   <style>
-    body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; background: #f0fdf4; padding: 1rem; }
-    .box { background: #fff; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; background: #f0fdf4; padding: 1rem; color: #1a202c; }
+    h1 { font-size: 1.8rem; }
+    .box { background: #fff; padding: 1rem; margin-top: 1rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
     th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
+    select, input, button { margin-top: 0.5rem; padding: 0.4rem; font-size: 1rem; }
+    .recommendation { font-weight: bold; font-size: 1.2rem; margin: 1rem 0; }
+    .btn { cursor: pointer; padding: 0.2rem 0.6rem; font-size: 0.9rem; }
   </style>
 </head>
 <body>
-  <h1>🌧️ Historie srážek – Zahrádka komunita</h1>
+  <h1>🌿 Zahrádka komunita – doporučení & historie</h1>
+
   <div class="box">
-    <label for="location">Lokalita:</label>
-    <select id="location">
+    <label for="locationSelect">Vyber lokalitu:</label><br/>
+    <select id="locationSelect">
       <option value="50.121,14.538">Vinoř (Kbely)</option>
       <option value="50.651,13.778">Dubí u Teplic</option>
-      <option value="custom">Vlastní souřadnice</option>
-    </select>
-    <input id="custom" placeholder="Např. 49.8,14.3" style="display:none;" />
-    <button onclick="load()">Načíst srážky</button>
+      <option value="custom">Vlastní místo</option>
+    </select><br/>
+    <input id="customCoords" placeholder="např. 49.8,14.3" style="display:none;" />
+    <button onclick="loadAll()">🔄 Načíst vše</button>
   </div>
 
   <div class="box">
-    <h2>Srážky za posledních 7 dní</h2>
-    <table id="rain">
-      <thead><tr><th>Datum</th><th>Srážky (mm)</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <h2>🗓️ Historie zálivky (7 dní)</h2>
+    <table id="wateringTable"><thead><tr><th>Datum</th><th>Zalito</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="box">
+    <h2>🌧️ Historické srážky (7 dní)</h2>
+    <table id="rainTable"><thead><tr><th>Datum</th><th>Srážky (mm)</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="box">
+    <h2>🤖 Doporučení</h2>
+    <div class="recommendation" id="recommendation">Načítám...</div>
+  </div>
+
+  <div class="box">
+    <h2>📅 Denní předpověď (zítra + 2 dny)</h2>
+    <table id="dailyTable"><thead><tr><th>Den</th><th>Min °C</th><th>Max °C</th><th>Srážky mm</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="box">
+    <h2>⏱️ Hodinová předpověď (dnes)</h2>
+    <table id="hourlyTable"><thead><tr><th>Čas</th><th>Teplota</th><th>Srážky</th></tr></thead><tbody></tbody></table>
   </div>
 
 <script>
-function getDate(offset) {
+const today = new Date();
+let coords = [50.121, 14.538];
+
+document.getElementById("locationSelect").addEventListener("change", e => {
+  document.getElementById("customCoords").style.display = e.target.value === "custom" ? "inline-block" : "none";
+});
+
+function getDate(offset = 0) {
   const d = new Date();
   d.setDate(d.getDate() - offset);
   return d.toISOString().split("T")[0];
 }
 
-async function load() {
-  let coords;
-  const loc = document.getElementById("location").value;
-  if (loc === "custom") {
-    coords = document.getElementById("custom").value.split(",").map(x => parseFloat(x.trim()));
+function loadAll() {
+  const val = document.getElementById("locationSelect").value;
+  if (val === "custom") {
+    coords = document.getElementById("customCoords").value.split(",").map(s => parseFloat(s.trim()));
   } else {
-    coords = loc.split(",").map(x => parseFloat(x));
+    coords = val.split(",").map(Number);
   }
+  loadWateringHistory();
+  loadRainHistory();
+  loadForecast();
+}
 
+function loadWateringHistory() {
+  const table = document.querySelector("#wateringTable tbody");
+  table.innerHTML = "";
+  for (let i = 6; i >= 0; i--) {
+    const d = getDate(i);
+    const watered = localStorage.getItem("watered_" + d) === "true";
+    table.innerHTML += `<tr><td>${d}</td><td><button class="btn" onclick="toggleWatered('${d}')">${watered ? "✅ Ano" : "❌ Ne"}</button></td></tr>`;
+  }
+}
+
+function toggleWatered(dateStr) {
+  const current = localStorage.getItem("watered_" + dateStr) === "true";
+  localStorage.setItem("watered_" + dateStr, (!current).toString());
+  loadWateringHistory();
+  loadForecast(); // přepočítá doporučení
+}
+
+async function loadRainHistory() {
   const start = getDate(6);
   const end = getDate(0);
   const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${coords[0]}&longitude=${coords[1]}&start_date=${start}&end_date=${end}&daily=precipitation_sum&timezone=Europe%2FBerlin`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const table = document.querySelector("#rainTable tbody");
+    table.innerHTML = "";
+    for (let i = 0; i < data.daily.time.length; i++) {
+      table.innerHTML += `<tr><td>${data.daily.time[i]}</td><td>${data.daily.precipitation_sum[i]}</td></tr>`;
+    }
+  } catch {
+    alert("Chyba při načítání srážek.");
+  }
+}
+
+async function loadForecast() {
+  const start = getDate(0);
+  const end = getDate(3);
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords[0]}&longitude=${coords[1]}&hourly=temperature_2m,precipitation&daily=temperature_2m_min,temperature_2m_max,precipitation_sum&start_date=${start}&end_date=${end}&timezone=Europe%2FBerlin`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
-    const tbody = document.querySelector("#rain tbody");
-    tbody.innerHTML = "";
-    for (let i = 0; i < data.daily.time.length; i++) {
-      const row = `<tr><td>${data.daily.time[i]}</td><td>${data.daily.precipitation_sum[i]}</td></tr>`;
-      tbody.innerHTML += row;
+    const now = new Date();
+
+    // Denní předpověď (zítra + 2 dny)
+    const daily = data.daily;
+    const dailyTable = document.querySelector("#dailyTable tbody");
+    dailyTable.innerHTML = "";
+    for (let i = 1; i < Math.min(4, daily.time.length); i++) {
+      dailyTable.innerHTML += `<tr><td>${daily.time[i]}</td><td>${daily.temperature_2m_min[i]}</td><td>${daily.temperature_2m_max[i]}</td><td>${daily.precipitation_sum[i]}</td></tr>`;
     }
+
+    // Hodinová předpověď (zbytek dne)
+    const hourlyTable = document.querySelector("#hourlyTable tbody");
+    hourlyTable.innerHTML = "";
+    for (let i = 0; i < data.hourly.time.length; i++) {
+      const [date, time] = data.hourly.time[i].split("T");
+      if (date === getDate(0) && time >= now.toISOString().split("T")[1].substring(0,5)) {
+        hourlyTable.innerHTML += `<tr><td>${time}</td><td>${data.hourly.temperature_2m[i]}</td><td>${data.hourly.precipitation[i]}</td></tr>`;
+      }
+    }
+
+    // Doporučení
+    const wateredToday = localStorage.getItem("watered_" + getDate(0)) === "true";
+    const wateredYesterday = localStorage.getItem("watered_" + getDate(1)) === "true";
+    const rainToday = daily.precipitation_sum[0];
+
+    const r = document.getElementById("recommendation");
+    if (wateredToday || wateredYesterday) {
+      r.textContent = "🪴 Zalito nedávno – není potřeba znovu zalévat.";
+    } else if (rainToday < 1) {
+      r.textContent = "💧 Dnes asi nezaprší – doporučeno zalít.";
+    } else {
+      r.textContent = "🌧️ Dnes má pršet – zálivka možná nebude nutná.";
+    }
+
   } catch {
-    alert("Chyba při načítání dat.");
+    document.getElementById("recommendation").textContent = "⚠️ Chyba při načítání dat.";
   }
 }
 
-document.getElementById("location").addEventListener("change", e => {
-  document.getElementById("custom").style.display = e.target.value === "custom" ? "inline-block" : "none";
-});
-
-window.onload = load;
+window.onload = loadAll;
 </script>
 </body>
 </html>
